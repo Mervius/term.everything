@@ -53,6 +53,9 @@ export const parse_args = async () => {
         type: "boolean",
         default: false,
       },
+      ["max-frame-rate"]: {
+        type: "string",
+      },
     },
     args: Bun.argv.slice(2),
     allowPositionals: true,

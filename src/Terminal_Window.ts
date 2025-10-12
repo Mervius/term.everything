@@ -102,6 +102,13 @@ export class Terminal_Window {
 
     process.stdout.write(Ansi_Escape_Codes.hide_cursor);
 
+    if (this.args.values["max-frame-rate"]) {
+      const max_frame_rate = parseFloat(this.args.values["max-frame-rate"]);
+      if (!isNaN(max_frame_rate) && max_frame_rate > 0) {
+        this.min_terminal_time_seconds = 1 / max_frame_rate;
+      }
+    }
+
     on_exit(this.on_exit);
   }
 
@@ -340,6 +347,40 @@ export class Terminal_Window {
   desired_frame_time_seconds = 0.016; // 60 fps
   time_of_start_of_last_frame: number | null = null;
 
+  /**
+   * Don't draw until at least min_terminal_time_seconds has passed
+   * since the last frame has been drawn to the terminal. (Not drawn
+   * to the canvas, that is done as fast as possible)
+   *
+   * This is set from the --max-frame-rate argument.
+   */
+  min_terminal_time_seconds: number | null = null;
+  time_of_last_terminal_draw: number | null = null;
+
+  draw_to_terminal = (start_of_frame: number, status_line: string) => {
+    if (this.min_terminal_time_seconds !== null) {
+      if (
+        start_of_frame - (this.time_of_last_terminal_draw ?? 0) <
+        this.min_terminal_time_seconds
+      ) {
+        return;
+      }
+      this.time_of_last_terminal_draw = start_of_frame;
+    }
+
+    const desktop_buffer = this.canvas_desktop.canvas.toBuffer("raw");
+
+    if (!debug_turn_off_output()) {
+      this.rendered_screen_size = c.draw_desktop(
+        this.draw_state,
+        desktop_buffer,
+        this.virtual_monitor_size.width,
+        this.virtual_monitor_size.height,
+        this.hide_status_bar ? "" : status_line
+      );
+    }
+  };
+
   // update_keys = (delta_time: number) => {
   //   const new_held_down: typeof this.keys_held_down = {};
   //   for (const key of this.keys_pressed_this_frame) {
@@ -382,22 +423,13 @@ export class Terminal_Window {
       }
       this.canvas_desktop.draw_clients(this.socket_listener.clients);
 
-      const desktop_buffer = this.canvas_desktop.canvas.toBuffer("raw");
-
       const status_line = this.status_line.draw(
         delta_time,
         this.get_app_title(),
         this.keys_pressed_this_frame
       );
-      if (!debug_turn_off_output()) {
-        this.rendered_screen_size = c.draw_desktop(
-          this.draw_state,
-          desktop_buffer,
-          this.virtual_monitor_size.width,
-          this.virtual_monitor_size.height,
-          this.hide_status_bar ? "" : status_line
-        );
-      }
+
+      this.draw_to_terminal(start_of_frame, status_line);
 
       // const draw_time = Date.now();
 
